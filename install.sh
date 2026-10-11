@@ -36,11 +36,9 @@ if [[ -z "$EMAIL" ]]; then
   green "Будет использован email: $EMAIL"
 fi
 
+# Генерируем только HEX-секрет для установщика tproxy-server
 SECRET_HEX="$(openssl rand -hex 16)"
-SECRET_B64="$(python3 -c "import base64; print(base64.urlsafe_b64encode(bytes.fromhex('$SECRET_HEX')).decode().rstrip('='))")"
-
 green "Сгенерирован серверный секрет (HEX): $SECRET_HEX"
-green "Сгенерирован секрет для ссылки (Base64): $SECRET_B64"
 
 yellow "Подготовка публичной директории сайта ($SITE_DIR)..."
 mkdir -p "$SITE_DIR"
@@ -76,17 +74,27 @@ cyan "\nЗапуск официального установщика tproxy-serv
   --site-dir "$SITE_DIR" \
   --secret "$SECRET_HEX"
 
+# Даем сервисам пару секунд на старт и сохранение конфигов
 sleep 3
 
+# Извлекаем сгенерированный base_path и готовый SECRET из конфигурации
+BASE_PATH=""
+SECRET_B64_FINAL=""
 CONFIG_FILE="/etc/tproxy-server/config.json"
+
 if [[ -f "$CONFIG_FILE" ]]; then
   BASE_PATH=$(jq -r '.base_path // empty' "$CONFIG_FILE" 2>/dev/null)
+  SECRET_B64_FINAL=$(jq -r '.secret // empty' "$CONFIG_FILE" 2>/dev/null)
 else
   die "Файл конфигурации $CONFIG_FILE не найден."
 fi
 
+[[ -z "$BASE_PATH" ]] && die "Не удалось получить base_path из конфигурации."
+[[ -z "$SECRET_B64_FINAL" ]] && die "Не удалось получить финальный secret из конфигурации."
+
+# Формируем итоговую ссылку
 SERVER_ENCODED="${HOST}%2F${BASE_PATH}"
-TG_LINK="https://t.me/webproxy?server=${SERVER_ENCODED}&secret=${SECRET_B64}"
+TG_LINK="https://t.me/webproxy?server=${SERVER_ENCODED}&secret=${SECRET_B64_FINAL}"
 
 printf '\n'
 cyan '============================================================'
@@ -97,7 +105,7 @@ printf '\n'
 yellow "Твои данные для подключения:"
 printf 'Домен (Server): %s\n' "$HOST"
 printf 'Путь (Path):    /%s\n' "$BASE_PATH"
-printf 'Секрет (Secret): %s\n' "$SECRET_B64"
+printf 'Секрет (Secret): %s\n' "$SECRET_B64_FINAL"
 
 printf '\n'
 green "Готовая ссылка для Telegram (скопируй и нажми):"
