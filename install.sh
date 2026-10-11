@@ -44,11 +44,15 @@ elif [[ ! "$EMAIL" =~ ^[A-Za-z0-9._+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]]; then
   die "Некорректный email."
 fi
 
-# 1. Генерируем секрет в формате Base64URL (как требует tproxy-server)
-SECRET="$(openssl rand -base64 16 | tr '+/' '-_' | tr -d '=')"
-green "Сгенерирован WEB-секрет: $SECRET"
+# 1. Генерируем 16-байтный секрет в формате HEX (32 символа) для сервера
+SECRET_HEX="$(openssl rand -hex 16)"
+# 2. Конвертируем этот HEX-секрет в Base64URL для Telegram-ссылки
+SECRET_B64="$(python3 -c "import base64; print(base64.urlsafe_b64encode(bytes.fromhex('$SECRET_HEX')).decode().rstrip('='))")"
 
-# 2. Создаем директорию для сайта, чтобы tproxy-server не падал при запуске
+green "Сгенерирован серверный секрет (HEX): $SECRET_HEX"
+green "Сгенерирован секрет для ссылки (Base64): $SECRET_B64"
+
+# 3. Создаем директорию для сайта, чтобы tproxy-server не падал при запуске
 yellow "Подготовка публичной директории сайта ($SITE_DIR)..."
 mkdir -p "$SITE_DIR"
 cat > "$SITE_DIR/index.html" <<HTML
@@ -63,12 +67,12 @@ cat > "$SITE_DIR/index.html" <<HTML
 HTML
 chmod -R 755 "$SITE_DIR"
 
-# 3. Устанавливаем зависимости
+# 4. Устанавливаем зависимости
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends ca-certificates curl git nftables openssl jq
+apt-get install -y --no-install-recommends ca-certificates curl git nftables openssl jq python3
 
-# 4. Скачиваем официальный репозиторий
+# 5. Скачиваем официальный репозиторий
 if [[ -d "$INSTALL_DIR/.git" ]]; then
   git -C "$INSTALL_DIR" fetch --depth=1 origin
   git -C "$INSTALL_DIR" checkout -f FETCH_HEAD
@@ -78,19 +82,19 @@ fi
 
 cd "$INSTALL_DIR"
 
-# 5. Запускаем официальный установщик
+# 6. Запускаем официальный установщик (передаем ему правильный HEX-секрет)
 cyan "\nЗапуск официального установщика tproxy-server..."
 ./deploy/install.sh \
   --hostname "$HOST" \
   --email "$EMAIL" \
   --site-dir "$SITE_DIR" \
-  --secret "$SECRET"
+  --secret "$SECRET_HEX"
 
 # Даем сервисам пару секунд на старт
 sleep 3
 systemctl --no-pager status caddy mtproxy tproxy-server >/dev/null 2>&1 || true
 
-# 6. Извлекаем сгенерированный base_path из конфигурации
+# 7. Извлекаем сгенерированный base_path из конфигурации
 BASE_PATH=""
 CONFIG_FILE="/etc/tproxy-server/config.json"
 
@@ -102,9 +106,9 @@ fi
 
 [[ -z "$BASE_PATH" ]] && die "Не удалось получить base_path из конфигурации."
 
-# 7. Формируем итоговую ссылку
+# 8. Формируем итоговую ссылку
 SERVER_ENCODED="${HOST}%2F${BASE_PATH}"
-TG_LINK="https://t.me/webproxy?server=${SERVER_ENCODED}&secret=${SECRET}"
+TG_LINK="https://t.me/webproxy?server=${SERVER_ENCODED}&secret=${SECRET_B64}"
 
 printf '\n'
 cyan '============================================================'
@@ -115,18 +119,18 @@ printf '\n'
 yellow "Твои данные для подключения:"
 printf 'Домен (Server): %s\n' "$HOST"
 printf 'Путь (Path):    /%s\n' "$BASE_PATH"
-printf 'Секрет (Secret): %s\n' "$SECRET"
+printf 'Секрет (Secret): %s\n' "$SECRET_B64"
 
 printf '\n'
 green "Готовая ссылка для Telegram (скопируй и нажми):"
 printf '\033[1;32m%s\033[0m\n\n' "$TG_LINK"
 
-# 8. Важное предупреждение о маскировке сайта
+# 9. Важное предупреждение о маскировке сайта
 red "⚠️ ВАЖНО ДЛЯ ОБХОДА БЛОКИРОВОК (DPI):"
 yellow "Сейчас по адресу https://${HOST} установлена простая заглушка."
 yellow "ОБЯЗАТЕЛЬНО замените содержимое папки ${SITE_DIR} на свой полноценный сайт."
 yellow "Вы можете:"
-yellow "  1. Сгенерировать красивый лендинг или блог с помощью ИИ (ChatGPT/Claude)."
+yellow "  1. Сгенерировать красивый лендинг или блог с помощью ИИ."
 yellow "  2. Скачать любой бесплатный HTML-шаблон из интернета."
 yellow "  3. Загрузить свой уже готовый сайт."
 yellow "Это нужно, чтобы ваш сервер выглядел как обычный веб-ресурс и не вызывал подозрений."
