@@ -24,8 +24,9 @@
 Подключитесь к вашему серверу по SSH и выполните следующую команду:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/IohnMorris/tg_web_proxy_deploy/main/install.sh | sudo bash 
+sudo bash -c "$(curl -sSL https://raw.githubusercontent.com/IohnMorris/tg_web_proxy_deploy/main/install.sh)"
 ```
+
 ## 🛡 Важно для обхода блокировок (DPI)
 
 Для успешной маскировки трафика от провайдеров (РКН и других систем DPI) ваш сервер должен выглядеть как обычный сайт. 
